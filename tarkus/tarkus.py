@@ -10,6 +10,7 @@ Usage:
     tarkus.py update <plugin-name>
     tarkus.py new <plugin-dir> <plugin-name>
 """
+from itertools import imap
 import stat
 from tempfile import mkdtemp
 import docopt
@@ -20,7 +21,7 @@ import shutil
 import yaml
 from attrdict import AttrMap
 
-TARKUS_BASE_CONFIG_PATH = "tarkus.base.yml"
+TARKUS_BASE_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "tarkus.base.yml")
 TARKUS_CONFIG_PATH = os.path.join(os.getenv("APPDATA"), "Tarkus", "tarkus.yml")
 
 PLUGIN_TEMPLATE = ("name: {name}  # The name of the plugin. Preferable lowercase.\n"
@@ -134,7 +135,7 @@ class Tarkus(object):
         with self.config:
             self.config.repo_path = repo_path
 
-    def _install_from_git(self, url):
+    def _install_from_git(self, url, name=None):
         temp_path = self._get_temp_path()
         try:
             git.Repo.clone_from(url, temp_path)
@@ -143,7 +144,7 @@ class Tarkus(object):
 
         config_path = os.path.join(temp_path, "plugin.yml")
 
-        self._install_plugin(config_path, url)
+        self._install_plugin(config_path, url, name=name)
 
         remove_dir(temp_path)
 
@@ -165,7 +166,7 @@ class Tarkus(object):
         except KeyError:
             raise PluginNotInRepo("Plugin {!r} does not exist in repository.".format(name))
 
-        self._install_from_git(url)
+        self._install_from_git(url, name=name)
 
     def install(self, plugin_name):
         # First, try and install from local path
@@ -183,11 +184,31 @@ class Tarkus(object):
         # If not there, try and install from url
         self._install_from_git(plugin_name)
 
-    def _install_plugin(self, plugin_path, update_url=None):
+    def _install_plugin(self, plugin_path, update_url=None, name=None):
         # Read the plugin definition
         with open(plugin_path, "rb") as f:
-            plugin = AttrMap(yaml.safe_load(f))
+            plugin_definition = yaml.safe_load(f)
 
+        try:
+            plugin = AttrMap(plugin_definition)
+            self._install_plugin_internal(plugin, plugin_path, update_url)
+        except:
+            if name:
+                for temp_plugin in imap(AttrMap, plugin_definition):
+                    if temp_plugin.name == name:
+                        plugin = temp_plugin
+                        break
+                else:
+                    raise PluginNotFoundError(
+                        "Plugin names {!r} not found in {!r}.".format(name, update_url or plugin_path))
+
+                self._install_plugin_internal(plugin, plugin_path, update_url)
+
+            else:
+                for plugin in imap(AttrMap(plugin_definition)):
+                    self._install_plugin_internal(plugin, plugin_path, update_url)
+
+    def _install_plugin_internal(self, plugin, plugin_path, update_url):
         # Make sure it is not already installed
         if plugin.name in self.config.plugins:
             raise PluginAlreadyInstalledError("Plugin {!r} already installed.".format(plugin.name))
@@ -200,7 +221,6 @@ class Tarkus(object):
                 path = os.path.join(root, name)
                 if name.endswith(".py") or os.path.relpath(path, plugin.root) in plugin.include:
                     paths.append(path)
-
         copy_map = {}
         for path in paths:
             rel_path = os.path.relpath(path, plugin.root)
@@ -222,14 +242,14 @@ class Tarkus(object):
                 update_url=update_url,
             )
             # TODO: add version logging here too
-
         # Copy all files to the plugins directory
         for source, target in copy_map.iteritems():
             shutil.copy(source, target)
 
         # Install dependencies
-        requirements = os.path.join(plugin.root, plugin.requirements)
-        install_requirements(requirements)
+        if plugin.requirements:
+            requirements = os.path.join(plugin.root, plugin.requirements)
+            install_requirements(requirements)
 
     def freeze(self):
         for plugin in self.config.plugins.itervalues():

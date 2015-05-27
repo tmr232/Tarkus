@@ -20,4 +20,5 @@ setup(
     author_email='',
     description='IDA Pro Plugin Manager',
     long_description=(read('README.rst')),
+    include_package_data=True,
 )

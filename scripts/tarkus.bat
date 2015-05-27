@@ -1,1 +1,1 @@
-@python -m tarkus - %*
+@python -m tarkus %*
