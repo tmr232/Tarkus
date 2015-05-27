@@ -277,7 +277,7 @@ class Tarkus(object):
 
         if plugin.update_url:
             self.remove(plugin_name)
-            self.install(plugin.update_url)
+            self._install_from_git(plugin.update_url, plugin.name)
 
 
 def create_plugin_definition(path, name):
