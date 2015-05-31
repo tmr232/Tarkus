@@ -2,17 +2,17 @@
 Tarkus - IDA Plugin Manager
 
 Usage:
-    tarkus.py install <plugin.yml>
+    tarkus.py init [<ida-path>]
+    tarkus.py repo [<repo-path>]
+    tarkus.py install <plugin-name> [-l|-g]
     tarkus.py remove <plugin-name>
     tarkus.py freeze
-    tarkus.py init <ida-path>
-    tarkus.py repo <repo-path>
     tarkus.py update <plugin-name>
-    tarkus.py new <plugin-dir> <plugin-name>
 """
 from itertools import imap
 import stat
 from tempfile import mkdtemp
+from awesome.context import redirect_stdout
 import docopt
 import pip
 import git
@@ -20,6 +20,10 @@ import os
 import shutil
 import yaml
 from attrdict import AttrMap
+
+PLUGIN_DEFINITION_NAME = "tarkus.yml"
+
+PLUGINS_DIR_NAME = "plugins"
 
 TARKUS_BASE_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "tarkus.base.yml")
 TARKUS_CONFIG_PATH = os.path.join(os.getenv("APPDATA"), "Tarkus", "tarkus.yml")
@@ -59,10 +63,11 @@ class PluginNotInRepo(TarkusError):
 
 
 def install_requirements(requirements):
-    try:
-        pip.main(["install", "-r", requirements])
-    except SystemExit:
-        pass
+    with redirect_stdout():
+        try:
+            pip.main(["install", "-r", requirements])
+        except SystemExit:
+            pass
 
 
 class Config(object):
@@ -125,24 +130,41 @@ class Tarkus(object):
 
     @property
     def plugins_path(self):
-        return os.path.join(self.config.ida_path, "plugins")
+        return os.path.join(self.config.ida_path, PLUGINS_DIR_NAME)
 
-    def init(self, ida_path):
-        with self.config:
-            self.config.ida_path = ida_path
+    def init(self, ida_path=None):
+        if ida_path:
+            if not os.path.exists(ida_path):
+                print "Path does not exist."
+                return
 
-    def repo(self, repo_path):
+            with self.config:
+                self.config.ida_path = ida_path
+
+            print "IDA path successfully set."
+
+        else:
+            print "IDA Path: {}".format(self.config.ida_path)
+
+    def repo(self, repo_path=None):
+        if not repo_path:
+            print "Repo Parg: {}".format(self.config.repo_path)
+            return
+
         with self.config:
             self.config.repo_path = repo_path
 
+        print "Repo path successfully set."
+
     def _install_from_git(self, url, name=None):
         temp_path = self._get_temp_path()
+        print "Cloning plugin..."
         try:
             git.Repo.clone_from(url, temp_path)
         except git.GitCommandError:
             raise FailedCloningRepo("Failed cloning from {!r}".format(url))
 
-        config_path = os.path.join(temp_path, "plugin.yml")
+        config_path = os.path.join(temp_path, PLUGIN_DEFINITION_NAME)
 
         self._install_plugin(config_path, url, name=name)
 
@@ -166,26 +188,29 @@ class Tarkus(object):
         except KeyError:
             raise PluginNotInRepo("Plugin {!r} does not exist in repository.".format(name))
 
+        print "Plugin found in repository: {}".format(url)
+
         self._install_from_git(url, name=name)
 
-    def install(self, plugin_name):
-        # First, try and install from local path
-        if os.path.exists(plugin_name):
-            self._install_plugin(plugin_name)
-            return
+    def install(self, plugin_name, local, git):
+        if local:
+            print "Installing from local path {!r}".format(plugin_name)
+            if os.path.exists(plugin_name):
+                self._install_plugin(plugin_name)
 
-        # If not, try and install from the repository
-        try:
+        elif git:
+            print "Installing plugin from git at {!r}".format(plugin_name)
+            self._install_from_git(plugin_name)
+
+        else:
+            print "Looking for {!r} in repository".format(plugin_name)
             self._install_from_repo(plugin_name)
-            return
-        except PluginNotInRepo:
-            pass
 
-        # If not there, try and install from url
-        self._install_from_git(plugin_name)
+        print "Installation completed successfully."
 
     def _install_plugin(self, plugin_path, update_url=None, name=None):
         # Read the plugin definition
+        print "Installing plugin..."
         with open(plugin_path, "rb") as f:
             plugin_definition = yaml.safe_load(f)
 
@@ -221,6 +246,7 @@ class Tarkus(object):
                 path = os.path.join(root, name)
                 if name.endswith(".py") or os.path.relpath(path, plugin.root) in plugin.include:
                     paths.append(path)
+
         copy_map = {}
         for path in paths:
             rel_path = os.path.relpath(path, plugin.root)
@@ -257,6 +283,7 @@ class Tarkus(object):
             print "{}: {}".format(plugin.name, plugin.path)
 
     def remove(self, name):
+        print "Removing plugin {}".format(name)
         try:
             plugin = AttrMap(self.config.plugins[name])
 
@@ -269,6 +296,8 @@ class Tarkus(object):
         except KeyError:
             raise PluginNotFoundError("Plugin {!r} not found.".format(name))
 
+        print "Plugin successfully removed."
+
     def _get_temp_path(self):
         return mkdtemp("tarkus")
 
@@ -278,14 +307,6 @@ class Tarkus(object):
         if plugin.update_url:
             self.remove(plugin_name)
             self._install_from_git(plugin.update_url, plugin.name)
-
-
-def create_plugin_definition(path, name):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-    with open(path, "wb") as f:
-        f.write(PLUGIN_TEMPLATE.format(name))
 
 
 def main():
@@ -308,8 +329,10 @@ def main():
         tarkus.repo(args["<repo-path>"])
 
     elif args["install"]:
-        config = args["<plugin.yml>"]
-        tarkus.install(config)
+        config = args["<plugin-name>"]
+        local = args["-l"]
+        git = args["-g"]
+        tarkus.install(config, local, git)
 
     elif args["remove"]:
         name = args["<plugin-name>"]
@@ -321,11 +344,6 @@ def main():
     elif args["update"]:
         name = args["<plugin-name>"]
         tarkus.update(name)
-
-    elif args["new"]:
-        path = args["<plugin-dir>"]
-        name = args["<plugin-name>"]
-        create_plugin_definition(path, name)
 
 
 if __name__ == '__main__':
