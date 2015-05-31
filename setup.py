@@ -10,7 +10,7 @@ def read(*paths):
 
 setup(
     name='Tarkus',
-    version='0.9',
+    version='0.9.1',
     packages=find_packages(),
     scripts=["scripts/tarkus.bat"],
     install_requires=['docopt', 'pip', 'GitPython', 'PyYAML', 'attrdict', 'awesomelib'],
