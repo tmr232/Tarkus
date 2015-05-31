@@ -1,4 +1,6 @@
-clipboard
-networkx
+docopt
+pip
+GitPython
+PyYAML
+attrdict
 awesomelib
-wrapt

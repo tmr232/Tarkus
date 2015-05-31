@@ -13,7 +13,7 @@ setup(
     version='0.9',
     packages=find_packages(),
     scripts=["scripts/tarkus.bat"],
-    install_requires=['docopt', 'pip', 'GitPython', 'PyYAML', 'attrdict'],
+    install_requires=['docopt', 'pip', 'GitPython', 'PyYAML', 'attrdict', 'awesomelib'],
     url='https://github.com/tmr232/Tarkus',
     license='MIT',
     author='Tamir Bahar',
