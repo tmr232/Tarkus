@@ -1,6 +1,10 @@
 Tarkus
 ======
 
+
+**Status:** Tarkus is not currently being developed. It was replaced by Sark's ``plugin_loader.py`` plugin. See here: `code <https://github.com/tmr232/Sark/blob/master/plugins/plugin_loader.py>`_ and `docs <https://sark.readthedocs.org/en/latest/plugins/installation.html>`_.
+
+
 Tarkus is a plugin manager for IDA Pro, modelled after Python's pip.
 
 Getting Started
